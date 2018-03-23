@@ -132,13 +132,13 @@ class SPN():
             
 
             
-            if output == 0:
-                d_ds = 0
-            else:
-                d_ds = 1 / output
+            #if output == 0:
+            #    d_ds = 0
+            #else:
+            #    d_ds = 1 / output
 
-            #d_ds = 0
-            #d_ds = -np.log(output)
+            d_ds = 0
+
             root = self.get_root()
             root.logDerivative = d_ds
             root.backprop(self)
