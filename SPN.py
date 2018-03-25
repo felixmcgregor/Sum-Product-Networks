@@ -96,6 +96,7 @@ class SPN():
 
 
     def update_weights_gen_hard(self):
+        lr = 0.1
         for node in self.get_sum_nodes():
 
             max_id = list(node.children)[0]
@@ -105,7 +106,7 @@ class SPN():
                     max_id = child_id
 
             if node.children[max_id][1] != 0:
-                node.children[max_id][0] += 1
+                node.children[max_id][0] += 1*lr
 
             # clear aux holder
             for child_id in node.children.keys():
@@ -117,8 +118,8 @@ class SPN():
             lr = 0.1
 
             for child_id in node.children.keys():
-                #print("id", child_id)
-                node.children[child_id][0] += lr * (node.children[child_id][1])/N
+                #print("id", child_id, node.children[child_id][1])
+                node.children[child_id][0] += lr * np.exp(node.children[child_id][1])/N
                 node.children[child_id][1] = 0
 
 
@@ -132,19 +133,23 @@ class SPN():
             
 
             
-            #if output == 0:
-            #    d_ds = 0
-            #else:
-            #    d_ds = 1 / output
+            if output == 0:
+                #d_ds = 0
+                continue
+            else:
+                d_ds = 1 / output
 
-            d_ds = 0
+            #print("Root backprop", d_ds)
+            #d_ds = 0
 
             root = self.get_root()
-            root.logDerivative = d_ds
+            root.logDerivative = np.log(d_ds)
             root.backprop(self)
 
-            #self.update_weights(1)
-        self.update_weights(len(data))
+            self.update_weights(1)
+
+            #print()
+        #self.update_weights(len(data))
 
 
 
@@ -166,16 +171,16 @@ class SPN():
     def generative_hard_gd(self, data):
         for instance in data:  
             output = self.evaluate(instance)
+            self.clear_derivatives()
             root = self.get_root()
-            if root.logDerivative == SPN.LOG_ZERO:
-                root.logDerivative = output
+            if output == 0:
+                #root.logDerivative = 1/output
+                continue
             else:
-                root.logDerivative += output
+                root.logDerivative = np.log(1/output)
 
-            root.logDerivative = 0
             root.hard_backprop(self)
             self.update_weights_gen_hard()
-            self.clear_derivatives()
 
 
     def discriminitive_hard_gd(self, data, labels):

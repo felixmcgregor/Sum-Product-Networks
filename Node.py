@@ -109,16 +109,15 @@ class ProductNode(Node):
             if isinstance(child,LeafNode):
                 continue
 
+            # sum in log domain for product of children
             if child.logValue == Node.LOG_ZERO:
                 for node_id in self.children:
                     temp += spn.get_node_by_id(child_id).logValue
-
             else:
-
                 for node_id in self.children:
                     temp += spn.get_node_by_id(child_id).logValue
                 temp -= child.logValue
-
+            #print("temp prod", temp)
 
             if child.logDerivative == Node.LOG_ZERO:
                 child.logDerivative = temp
@@ -126,7 +125,7 @@ class ProductNode(Node):
                 child.logDerivative = np.logaddexp(temp, child.logDerivative)
 
             child.backprop(spn)
-            #print(child_id, np.exp(child.logValue))
+            #print("Product, child id", child_id,"exp derivative", np.exp(child.logDerivative))
 
 
     def hard_backprop(self, spn):
@@ -216,7 +215,7 @@ class SumNode(Node):
             #    print("First sum deriv", self.logDerivative, self.children[child_id][1])
             #child = spn.get_node_by_id(child_id)
             
-
+            # parent derivative times weight
             temp = self.logDerivative + np.log(self.children[child_id][0])
 
             if child.logDerivative == Node.LOG_ZERO:
@@ -234,13 +233,15 @@ class SumNode(Node):
             #else:
             #print(child.logValue)
             if child.logValue == Node.LOG_ZERO:
-                update = self.logDerivative
+                update = 0
             else:
                 update = child.logValue + self.logDerivative
-            update = np.exp(update)
-            #print("update",update)
+                #print(child_id)
+                #print("ds_dw child val", np.exp(child.logValue), "parent derivative", np.exp(self.logDerivative))
+            
+            #print("id", child_id,"update",update)
             # ds_dw
-            self.children[child_id][1] += update
+            self.children[child_id][1] = np.logaddexp(self.children[child_id][1], update)
 
 
     def hard_backprop(self, spn):
