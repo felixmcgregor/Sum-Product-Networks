@@ -1,11 +1,13 @@
 # slice and chop spn
 import numpy as np
 import math
-from Node import ProductNode
+from ProductNode import ProductNode
 from Node import LeafNode
-from Node import SumNode
+from SumNode import SumNode
 import copy
 import collections
+
+import random
 
 class SPN():
 
@@ -16,9 +18,197 @@ class SPN():
         self.nodes = []
 
 
+    ###############################################################
+    #               Generative gradient descent                   #
+    ###############################################################    
+
+    def evaluate(self,evidence):
+
+        self.set_leaves(evidence)
+        root = self.get_root()
+        return root.evaluate(self)
+
+
+    def update_weights(self, N, learning_rate=0.1):
+        for node in self.get_sum_nodes():
+            mean = 0
+            #for child_id in node.children.keys():
+            #    mean += np.exp(node.children[child_id][1])
+                #print("part", np.exp(node.children[child_id][1]))
+            #mean = mean / (len(node.children) * N)
+            #print("mean", mean)
+
+            for child_id in node.children.keys():
+                
+                print("weight before", node.children[child_id][0])
+                gradient =  np.exp(node.children[child_id][1])/N
+                update_value = gradient - mean
+                print("id", child_id, "update",update_value)
+                node.children[child_id][0] += learning_rate * update_value
+                node.children[child_id][1] = 0
+                print("weight after", node.children[child_id][0])
+
+                if node.children[child_id][0] < 0:
+                    node.children[child_id][0] = 0
+
+
+    def generative_soft_gd(self, data, batch=True):
+        
+        for instance in data:  
+            output = self.evaluate(instance)
+
+            self.clear_derivatives()
+            root = self.get_root()
+            
+            if output == SPN.LOG_ZERO:
+                continue
+            else:
+                root.logDerivative = -output
+
+            print("Output", output)
+            print("Raised Output", np.exp(output))
+            print("Root derivative", root.logDerivative)
+            root.backprop(self)
+            
+            if batch == False:
+                self.update_weights(1, 0.01)
+            self.normalise_weights()
+            print()
+
+        if batch == True:
+            self.update_weights(len(data), 0.01)
+        self.normalise_weights()
+
+    ###############################################################
+    #             Generative hard gradient descent                #
+    ###############################################################    
+
+    def evaluate_mpn(self,evidence):
+
+        self.set_leaves(evidence)
+        root = self.get_root()
+        return root.evaluate_mpn(self)
+
+
+    def generative_hard_gd(self, data, batch=True):
+
+        for instance in data:  
+
+            self.clear_derivatives()
+
+            output = self.evaluate_mpn(instance)
+            root = self.get_root()
+            if output == 0:
+                continue
+            else:
+                root.logDerivative = -output
+
+            root.hard_backprop(self)
+
+            # update weights online
+            if batch == False:
+                self.update_weights_gen_hard(1, learning_rate=0.1)
+
+        # upadte weight batch
+        if batch == True:
+            self.update_weights_gen_hard(len(data), learning_rate=0.05)
+        self.normalise_weights()
+
+
+    def update_weights_gen_hard(self, N, learning_rate=0.1):
+
+        for node in self.get_sum_nodes():
+            for child_id in node.children.keys():
+                # update the weight
+                node.children[child_id][0] += (node.children[child_id][1]/N)*learning_rate
+                # clear the counts holder
+                node.children[child_id][1] = 0
+
+    ###############################################################
+    #          Discriminitive hard gradient descent               #
+    ###############################################################    
+
+    def query(self, evidence):
+        x = []
+        value = self.best_guess(evidence)
+        x.append(value)
+
+
+        # numerators
+        x1 = self.evaluate(np.append(evidence, 1))
+        x2 = self.evaluate(np.append(evidence, 0))
+
+        x.append(x1-x[0])
+        x.append(x2-x[0])
+        return np.exp(x)
+
+
+    def best_guess(self, evidence):
+        for leaf in self.get_leaves():
+            var_value = 0
+
+            # evidence fill leaves normally
+            if leaf.order < len(evidence):
+                var_value = evidence[leaf.order]            
+                if leaf.inverse:
+                    var_value = 1 - var_value
+            # marginalise label
+            else:
+                var_value = 1
+            leaf.setValue(var_value)
+
+        root = self.get_root()
+        value = root.evaluate(self)
+
+        return value
+
+
+    def discriminitive_hard_gd(self, data, labels):
+        
+        for instance, y in zip(data, labels):  
+            self.clear_derivatives()
+            copy_spn = copy.deepcopy(self)
+            # correct label
+            inst = np.append(instance,y)
+            self.evaluate_mpn(inst)
+            root = self.get_root()
+            root.hard_backprop(self)
+
+
+            # best guess
+            copy_spn.best_guess(instance) # not gonna work
+            root = copy_spn.get_root()
+            root.hard_backprop(self)
+
+
+            # update weights
+            self.update_weights_hard(copy_spn)
+            self.normalise_weights()
+
+
+    def update_weights_hard(self, best_guess):
+        for node, guess in zip(self.get_sum_nodes(), best_guess.get_sum_nodes()):
+
+            for child_id, guess_child_id in zip(node.children.keys(), guess.children.keys()):
+                tmp = node.children[child_id][1] - guess.children[guess_child_id][1]
+                if tmp > 0:
+                    node.children[child_id][0] += tmp
+            #if node.id == 10:
+                #print(node.children[child_id][1])
+                #print(guess.children[guess_child_id][1])
+            # clear aux holder
+            for child_id in node.children.keys():
+                node.children[child_id][1] = 0
+
+
+    ###############################################################
+    #                              Utils                          #
+    ###############################################################  
+
     def get_next_node_id(self):
         self._curr_node_id += 1
         return self._curr_node_id
+
 
     def get_node_by_id(self, node_id):
         for node in self.nodes:
@@ -26,8 +216,10 @@ class SPN():
                 return node
         raise ValueError("Node id '{}' not found in SPN".format(node_id))
 
+
     def get_root(self):
         return self.get_node_by_id(0)
+
 
     def add_node(self,node, weight=1):
         self.nodes.append(node)
@@ -49,6 +241,7 @@ class SPN():
                 parent = self.get_node_by_id(node.parent_id)
                 parent.add_child(node.id, weight)
 
+
     def get_leaves(self):
         return [n for n in self.nodes if isinstance(n,LeafNode)]
 
@@ -64,9 +257,7 @@ class SPN():
                 for i in node.children: 
                     node.children
 
-
-    def evaluate(self,evidence):
-        # Feed the leaf node with data point or evidence
+    def set_leaves(self, evidence):
         for leaf in self.get_leaves():
             var_value = evidence[leaf.order]
             
@@ -74,190 +265,6 @@ class SPN():
             if leaf.inverse:
                 var_value = 1 - var_value
             leaf.setValue(var_value)
-
-        root = self.get_root()
-        value = root.evaluate(self)
-        return np.exp(value)
-
-
-    def evaluate_mpn(self,evidence):
-        # Feed the leaf node with data point or evidence
-        for leaf in self.get_leaves():
-            var_value = evidence[leaf.order]
-            
-            # for not x1 situations
-            if leaf.inverse:
-                var_value = 1 - var_value
-            leaf.setValue(var_value)
-
-        root = self.get_root()
-        value = root.evaluate_mpn(self)
-        return np.exp(value)
-
-
-    def update_weights_gen_hard(self):
-        lr = 0.1
-        for node in self.get_sum_nodes():
-
-            max_id = list(node.children)[0]
-            
-            for child_id in node.children.keys():
-                if node.children[child_id][1] > node.children[max_id][1]:
-                    max_id = child_id
-
-            if node.children[max_id][1] != 0:
-                node.children[max_id][0] += 1*lr
-
-            # clear aux holder
-            for child_id in node.children.keys():
-                node.children[child_id][1] = 0
-
-
-    def update_weights(self, N):
-        for node in self.get_sum_nodes():
-            lr = 0.1
-
-            for child_id in node.children.keys():
-                #print("id", child_id, node.children[child_id][1])
-                node.children[child_id][0] += lr * np.exp(node.children[child_id][1])/N
-                node.children[child_id][1] = 0
-
-
-    def generative_soft_gd(self, data):
-        
-        for instance in data:  
-            output = self.evaluate(instance)
-
-
-            self.clear_derivatives()
-            
-
-            
-            if output == 0:
-                #d_ds = 0
-                continue
-            else:
-                d_ds = 1 / output
-
-            #print("Root backprop", d_ds)
-            #d_ds = 0
-
-            root = self.get_root()
-            root.logDerivative = np.log(d_ds)
-            root.backprop(self)
-
-            self.update_weights(1)
-
-            #print()
-        #self.update_weights(len(data))
-
-
-
-    def update_weights_hard(self, best_guess):
-        for node, guess in zip(self.get_sum_nodes(), best_guess.get_sum_nodes()):
-
-            for child_id, guess_child_id in zip(node.children.keys(), guess.children.keys()):
-                tmp = node.children[child_id][1] - guess.children[guess_child_id][1]
-                if tmp > 0:
-                    node.children[child_id][0] += tmp
-            #if node.id == 10:
-                #print(node.children[child_id][1])
-                #print(guess.children[guess_child_id][1])
-            # clear aux holder
-            for child_id in node.children.keys():
-                node.children[child_id][1] = 0
-
-
-    def generative_hard_gd(self, data):
-        for instance in data:  
-            output = self.evaluate(instance)
-            self.clear_derivatives()
-            root = self.get_root()
-            if output == 0:
-                #root.logDerivative = 1/output
-                continue
-            else:
-                root.logDerivative = np.log(1/output)
-
-            root.hard_backprop(self)
-            self.update_weights_gen_hard()
-
-
-    def discriminitive_hard_gd(self, data, labels):
-        
-        for instance, y in zip(data, labels):  
-
-            copy_spn = copy.deepcopy(self)
-            # correct label
-            inst = np.append(instance,y)
-            self.evaluate_mpn(inst)
-            root = self.get_root()
-            root.hard_backprop(self)
-
-
-            # best guess
-            copy_spn.best_guess(instance) # not gonna work
-            root = copy_spn.get_root()
-            root.hard_backprop(self)
-
-
-        # update weights
-            self.update_weights_hard(copy_spn)
-        self.clear_derivatives()
-
-
-            
-    def query(self, evidence):
-        x = []
-        for leaf in self.get_leaves():
-            var_value = 0
-            if leaf.order < len(evidence):
-                var_value = evidence[leaf.order]            
-                # for not x1 situations
-                if leaf.inverse:
-                    var_value = 1 - var_value
-
-
-
-            # hacky prob
-            else:
-                var_value = 1
-            leaf.setValue(var_value)
-
-        root = self.get_root()
-        value = root.evaluate(self)
-        x.append(np.exp(value))
-
-
-        # numerators
-        x1 = self.evaluate(np.append(evidence, 1))
-        x2 = self.evaluate(np.append(evidence, 0))
-
-        x.append(x1/x[0])
-        x.append(x2/x[0])
-        return x
-
-
-    def best_guess(self, evidence):
-        for leaf in self.get_leaves():
-            var_value = 0
-            if leaf.order < len(evidence):
-                var_value = evidence[leaf.order]            
-                # for not x1 situations
-                if leaf.inverse:
-                    var_value = 1 - var_value
-
-
-
-            # hacky prob
-            else:
-                var_value = 1
-            leaf.setValue(var_value)
-
-        root = self.get_root()
-        value = root.evaluate_mpn(self)
-
-        return value
 
     def clear_derivatives(self):
         for node in self.nodes:
@@ -270,7 +277,7 @@ class SPN():
 
         root = self.get_root()
         value = root.evaluate(self)
-        return np.exp(value)
+        return value
 
 
     def normalise_weights(self):
@@ -284,42 +291,18 @@ class SPN():
                 node.children[child_id][0] = node.children[child_id][0] / z
 
 
-    def map_inference(self):
-        # what is the probability x3 = 0
+    def map_inference(self, evidence):
+        # what is the probability y = 1
         # numerator joint p(x1,x2,y)
-        evidence = np.array([0.1,0.1,0.0])
-        for leaf in self.get_leaves():
-            var_value = evidence[leaf.order]
-            
-            # for not x1 situations
-            if leaf.inverse:
-                var_value = 1 - var_value
-            leaf.setValue(var_value)
-
-        root = self.get_root()
-        num_value = root.evaluate(self)
-
+        denom_value = self.evaluate(np.append(evidence, 1))
 
         # denominator p(x1,x2)
-        evidence = np.array([0.1,0.1])
-        for leaf in self.get_leaves():
-            if leaf.order < len(evidence):
-                var_value = evidence[leaf.order]
-            
-                # for not x1 situations
-                if leaf.inverse:
-                    var_value = 1 - var_value
-                leaf.setValue(var_value)
-            else:
-                leaf.setValue(1.0)
+        num_value = self.best_guess(evidence)
 
-        denom_value = root.evaluate(self)
-        print("parts")
-        print(num_value)
-        print(denom_value)
-        print(num_value - denom_value)
+        if num_value == SPN.LOG_ZERO:
+            return SPN.LOG_ZERO
         conditional = num_value - denom_value
-        return np.exp(conditional)
+        return conditional
 
 
     def print_weights(self):
