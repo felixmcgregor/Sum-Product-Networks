@@ -29,30 +29,37 @@ class SPN():
         return root.evaluate(self)
 
 
-    def update_weights(self, N, learning_rate=0.1):
+    def update_weights(self, N, learning_rate):
         for node in self.get_sum_nodes():
             mean = 0
-            #for child_id in node.children.keys():
-            #    mean += np.exp(node.children[child_id][1])
-                #print("part", np.exp(node.children[child_id][1]))
-            #mean = mean / (len(node.children) * N)
-            #print("mean", mean)
+            if len(node.children) > 0:
+                for child_id in node.children.keys():
+                    mean += node.children[child_id][1]
+                    print("part", node.children[child_id][1]/N)
+                mean = mean / ( len(node.children) * N )
+
+            print("mean", mean)
 
             for child_id in node.children.keys():
                 
                 print("weight before", node.children[child_id][0])
-                gradient =  np.exp(node.children[child_id][1])/N
+                gradient =  node.children[child_id][1]/N
                 update_value = gradient - mean
+
                 print("id", child_id, "update",update_value)
+                # update weights
                 node.children[child_id][0] += learning_rate * update_value
+
+                # reset accumulationg derivatives
                 node.children[child_id][1] = 0
                 print("weight after", node.children[child_id][0])
 
+                # dont let weights go negative
                 if node.children[child_id][0] < 0:
                     node.children[child_id][0] = 0
 
 
-    def generative_soft_gd(self, data, batch=True):
+    def generative_soft_gd(self, data, batch=True, learning_rate=0.1):
         
         for instance in data:  
             output = self.evaluate(instance)
@@ -63,20 +70,26 @@ class SPN():
             if output == SPN.LOG_ZERO:
                 continue
             else:
+                # dll_droot = 1/output
+                # logDerivative = log(1)-log(output)
+                # maximise log likelihood: -log(output)
+                # minimise negative log likelihood: log(output)
+                # i get log output from evaluation: min neg ll: output
                 root.logDerivative = -output
 
-            print("Output", output)
+            #print("Output", output)
             print("Raised Output", np.exp(output))
-            print("Root derivative", root.logDerivative)
+            #print("Root log derivative", root.logDerivative)
+            #print()
             root.backprop(self)
             
             if batch == False:
-                self.update_weights(1, 0.01)
-            self.normalise_weights()
+                self.update_weights(1, learning_rate)
+                self.normalise_weights()
             print()
 
         if batch == True:
-            self.update_weights(len(data), 0.01)
+            self.update_weights(len(data), learning_rate)
         self.normalise_weights()
 
     ###############################################################
@@ -90,7 +103,7 @@ class SPN():
         return root.evaluate_mpn(self)
 
 
-    def generative_hard_gd(self, data, batch=True):
+    def generative_hard_gd(self, data, batch=True, learning_rate=0.1):
 
         for instance in data:  
 
@@ -98,7 +111,7 @@ class SPN():
 
             output = self.evaluate_mpn(instance)
             root = self.get_root()
-            if output == 0:
+            if output == SPN.LOG_ZERO:
                 continue
             else:
                 root.logDerivative = -output
@@ -115,7 +128,7 @@ class SPN():
         self.normalise_weights()
 
 
-    def update_weights_gen_hard(self, N, learning_rate=0.1):
+    def update_weights_gen_hard(self, N, learning_rate):
 
         for node in self.get_sum_nodes():
             for child_id in node.children.keys():
@@ -123,6 +136,39 @@ class SPN():
                 node.children[child_id][0] += (node.children[child_id][1]/N)*learning_rate
                 # clear the counts holder
                 node.children[child_id][1] = 0
+
+    ###############################################################
+    #          Discriminitive soft gradient descent               #
+    ###############################################################  
+
+ #-----------------------------------------------------------------------
+    def discriminitive_soft_gd(self, data, labels, batch=True, learning_rate=0.1):
+        for instance in data:  
+            output = self.evaluate(instance)
+
+            self.clear_derivatives()
+            root = self.get_root()
+            # correct label
+            
+            if output == SPN.LOG_ZERO:
+                continue
+            else:
+                root.logDerivative = -output
+
+            root.backprop(self)
+
+            # best guess
+
+            
+            if batch == False:
+                self.update_weights(1, learning_rate)
+                self.normalise_weights()
+            print()
+
+        if batch == True:
+            self.update_weights(len(data), learning_rate)
+        self.normalise_weights()
+
 
     ###############################################################
     #          Discriminitive hard gradient descent               #
@@ -158,16 +204,19 @@ class SPN():
             leaf.setValue(var_value)
 
         root = self.get_root()
-        value = root.evaluate(self)
+        value = root.evaluate_mpn(self)
 
         return value
 
 
-    def discriminitive_hard_gd(self, data, labels):
+    def discriminitive_hard_gd(self, data, labels, batch=True, learning_rate=0.1):
         
+        copy_spn = copy.deepcopy(self)
+
         for instance, y in zip(data, labels):  
             self.clear_derivatives()
-            copy_spn = copy.deepcopy(self)
+            copy_spn.clear_derivatives()
+
             # correct label
             inst = np.append(instance,y)
             self.evaluate_mpn(inst)
@@ -181,22 +230,23 @@ class SPN():
             root.hard_backprop(self)
 
 
+        if batch == True:
             # update weights
-            self.update_weights_hard(copy_spn)
+            self.update_weights_hard(copy_spn, learning_rate)
             self.normalise_weights()
 
 
-    def update_weights_hard(self, best_guess):
+    def update_weights_hard(self, best_guess, learning_rate):
         for node, guess in zip(self.get_sum_nodes(), best_guess.get_sum_nodes()):
 
             for child_id, guess_child_id in zip(node.children.keys(), guess.children.keys()):
+                # counts difference
                 tmp = node.children[child_id][1] - guess.children[guess_child_id][1]
+                #print("id", child_id, "difference", tmp)
                 if tmp > 0:
-                    node.children[child_id][0] += tmp
-            #if node.id == 10:
-                #print(node.children[child_id][1])
-                #print(guess.children[guess_child_id][1])
-            # clear aux holder
+                    node.children[child_id][0] += tmp*learning_rate
+
+            # clear counts
             for child_id in node.children.keys():
                 node.children[child_id][1] = 0
 
@@ -286,6 +336,8 @@ class SPN():
             z = 0
             for child_id in node.children.keys():
                 z += node.children[child_id][0]
+            if z == 0:
+                return
 
             for child_id in node.children.keys():
                 node.children[child_id][0] = node.children[child_id][0] / z

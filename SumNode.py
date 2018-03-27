@@ -21,10 +21,12 @@ class SumNode(Node):
 
         weighted_children = Node.LOG_ZERO
         for child_id in self.children.keys():
-
+            
+            if self.children[child_id][0] == 0:
+                continue
 
             # taking the log of the weight + log val
-            weighted_child = spn.get_node_by_id(child_id).evaluate(spn) + np.log(self.children[child_id][0] + 0.0000001)
+            weighted_child = spn.get_node_by_id(child_id).evaluate(spn) + np.log(self.children[child_id][0])
             if weighted_child == Node.LOG_ZERO:
                 continue
 
@@ -42,9 +44,14 @@ class SumNode(Node):
 
             child = spn.get_node_by_id(child_id)
 
-            # parent derivative times weight
-            temp = self.logDerivative + np.log(self.children[child_id][0] + 0.00000001) # prevent divide by 0 for 0 weight
+            # backprop from parent
+            if self.children[child_id][0] == 0:
+                temp = Node.LOG_ZERO
+            else:
+                # parent derivative times weight
+                temp = self.logDerivative + np.log(self.children[child_id][0]) 
 
+            # pass derivative
             if child.logDerivative == Node.LOG_ZERO:
                 child.logDerivative = temp
             else:
@@ -54,22 +61,25 @@ class SumNode(Node):
             # update the values
             if child.logValue == Node.LOG_ZERO:
                 update = Node.LOG_ZERO
-                print("update is 0  because child", child.id,"value was 0")
+                #print("update is 0  because child", child.id,"value was 0")
             else:
                 update = child.logValue + self.logDerivative
-                print("Update to node", child_id, "from", self.id)
-                print("ds_dw child val", np.exp(child.logValue), "parent derivative", np.exp(self.logDerivative))
-                print("Update val",  update)
+                #print("Update to node", child_id, "from", self.id)
+                print("ds_dw child val", child_id, np.exp(child.logValue), "parent derivative(exp)", np.exp(self.logDerivative))
+                #print("Update val",  update)
                 print("Raised Update val",  np.exp(update))
                 
 
             
-            print("id", child_id,"update",update)
-            print()
+            #print("id", child_id,"update",update)
+
             # ds_dw
-            self.children[child_id][1] = np.logaddexp(self.children[child_id][1], update)
-            self.children[child_id][1] += update
-            print("passing", np.exp(child.logDerivative), "from", self.id, "to", child.id)
+            #self.children[child_id][1] = np.logaddexp(self.children[child_id][1], update)
+            self.children[child_id][1] += np.exp(update)
+            print("updated", child_id, (self.children[child_id][1]))
+            #print()
+            #print("passing", np.exp(child.logDerivative), "from", self.id, "to", child.id)
+
 
             child.backprop(spn)
 
@@ -99,7 +109,10 @@ class SumNode(Node):
 
         max_child = Node.LOG_ZERO
         for child_id in self.children.keys():
-            child = spn.get_node_by_id(child_id).evaluate(spn) + np.log(self.children[child_id][0]+0.00001)
+            if self.children[child_id][0] == 0:
+                continue
+            else:
+                child = spn.get_node_by_id(child_id).evaluate(spn) + np.log(self.children[child_id][0])
             if child > max_child:
                 max_child = child
         self.logValue = max_child
