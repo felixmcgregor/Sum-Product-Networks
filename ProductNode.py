@@ -15,13 +15,13 @@ class ProductNode(Node):
 
 
     ###############################################################
-    #               Generative gradient descent                   #
+    #                    soft gradient descent                    #
     ###############################################################  
 
     def backprop(self, spn):
         # unused parent, goes here when upward pass did not pass through here
         if self.logDerivative == Node.LOG_ZERO:
-            print("unused parent", self.id)
+            print("unused parent product", self.id)
             return
 
         for child_id in self.children:
@@ -29,21 +29,18 @@ class ProductNode(Node):
             temp = self.logDerivative
 
             child = spn.get_node_by_id(child_id)
-            
             # sum in log domain for product of children
             for node_id in self.children:
-                val = spn.get_node_by_id(child_id).logValue
+                val = spn.get_node_by_id(node_id).logValue
                 if val != Node.LOG_ZERO:
                     temp += val
-            
             # divide out current child
             if child.logValue != Node.LOG_ZERO:
                 temp -= child.logValue
-
             # pass derivative
             child.logDerivative = np.logaddexp(temp, child.logDerivative)
 
-            #print("passing", np.exp(child.logDerivative), "to", child.id, "from", self.id)
+            #print("passing derivative", np.exp(child.logDerivative), "from", self.id, "to", child.id)
             child.backprop(spn)
 
 
@@ -65,7 +62,7 @@ class ProductNode(Node):
 
 
     ###############################################################
-    #             Generative hard gradient descent                #
+    #                    hard gradient descent                    #
     ############################################################### 
 
     def hard_backprop(self, spn):

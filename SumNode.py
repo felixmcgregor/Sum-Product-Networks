@@ -14,7 +14,7 @@ class SumNode(Node):
         self.children.update({child_id: [weight, 0]})
 
     ###############################################################
-    #               Generative gradient descent                   #
+    #                     gradient descent                        #
     ###############################################################  
 
     def evaluate(self, spn):
@@ -38,6 +38,7 @@ class SumNode(Node):
     def backprop(self, spn):
         # unused parent, dont bother passing derivative
         if self.logDerivative == Node.LOG_ZERO:
+            print("unused parent sum", self.id)
             return
  
         for child_id in self.children.keys():
@@ -61,31 +62,22 @@ class SumNode(Node):
             # update the values
             if child.logValue == Node.LOG_ZERO:
                 update = Node.LOG_ZERO
-                #print("update is 0  because child", child.id,"value was 0")
             else:
                 update = child.logValue + self.logDerivative
-                #print("Update to node", child_id, "from", self.id)
-                print("ds_dw child val", child_id, np.exp(child.logValue), "parent derivative(exp)", np.exp(self.logDerivative))
-                #print("Update val",  update)
-                print("Raised Update val",  np.exp(update))
-                
-
-            
-            #print("id", child_id,"update",update)
+                #print("ds_dw child val", child_id, np.exp(child.logValue), "parent",self.id," derivative", np.exp(self.logDerivative))
+                #print("Update val",  np.exp(update))
 
             # ds_dw
-            #self.children[child_id][1] = np.logaddexp(self.children[child_id][1], update)
             self.children[child_id][1] += np.exp(update)
-            print("updated", child_id, (self.children[child_id][1]))
-            #print()
-            #print("passing", np.exp(child.logDerivative), "from", self.id, "to", child.id)
+
+            #print("passing derivative", np.exp(child.logDerivative), "from", self.id, "to", child.id)
 
 
             child.backprop(spn)
 
 
     ###############################################################
-    #             Generative hard gradient descent                #
+    #                    hard gradient descent                    #
     ###############################################################  
 
     def hard_backprop(self, spn):

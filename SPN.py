@@ -34,16 +34,14 @@ class SPN():
             mean = 0
             if len(node.children) > 0:
                 for child_id in node.children.keys():
-                    mean += node.children[child_id][1]
-                    print("part", node.children[child_id][1]/N)
-                mean = mean / ( len(node.children) * N )
-
-            print("mean", mean)
+                    mean += node.children[child_id][1]/N
+                    #print("part", node.children[child_id][1]/N)
+                mean = mean / (len(node.children))
 
             for child_id in node.children.keys():
                 
-                print("weight before", node.children[child_id][0])
-                gradient =  node.children[child_id][1]/N
+                #print("weight before", node.children[child_id][0])
+                gradient =  node.children[child_id][1] / N
                 update_value = gradient - mean
 
                 print("id", child_id, "update",update_value)
@@ -52,12 +50,11 @@ class SPN():
 
                 # reset accumulationg derivatives
                 node.children[child_id][1] = 0
-                print("weight after", node.children[child_id][0])
+                #print("weight after", node.children[child_id][0])
 
                 # dont let weights go negative
                 if node.children[child_id][0] < 0:
                     node.children[child_id][0] = 0
-
 
     def generative_soft_gd(self, data, batch=True, learning_rate=0.1):
         
@@ -67,26 +64,17 @@ class SPN():
             self.clear_derivatives()
             root = self.get_root()
             
+            # dll_droot = 1/output, maximise log likelihood: -log(output)
             if output == SPN.LOG_ZERO:
                 continue
-            else:
-                # dll_droot = 1/output
-                # logDerivative = log(1)-log(output)
-                # maximise log likelihood: -log(output)
-                # minimise negative log likelihood: log(output)
-                # i get log output from evaluation: min neg ll: output
-                root.logDerivative = -output
+            root.logDerivative = -output
 
-            #print("Output", output)
-            print("Raised Output", np.exp(output))
-            #print("Root log derivative", root.logDerivative)
-            #print()
             root.backprop(self)
             
             if batch == False:
                 self.update_weights(1, learning_rate)
                 self.normalise_weights()
-            print()
+            #print()
 
         if batch == True:
             self.update_weights(len(data), learning_rate)
@@ -141,55 +129,90 @@ class SPN():
     #          Discriminitive soft gradient descent               #
     ###############################################################  
 
- #-----------------------------------------------------------------------
     def discriminitive_soft_gd(self, data, labels, batch=True, learning_rate=0.1):
-        for instance in data:  
-            output = self.evaluate(instance)
 
+        copy_spn = copy.deepcopy(self)
+
+        for instance, y in zip(data, labels): 
+            # reset derivatives 
             self.clear_derivatives()
-            root = self.get_root()
+            copy_spn.clear_derivatives()
+
             # correct label
-            
+            inst = np.append(instance,y)
+            output = self.evaluate(inst)
+            root = self.get_root()
+
             if output == SPN.LOG_ZERO:
                 continue
             else:
                 root.logDerivative = -output
-
             root.backprop(self)
 
-            # best guess
 
-            
-            if batch == False:
-                self.update_weights(1, learning_rate)
-                self.normalise_weights()
-            print()
+            # best guess
+            copy_spn.best_guess(instance) 
+            root = copy_spn.get_root()
+            root.backprop(self)
+
 
         if batch == True:
-            self.update_weights(len(data), learning_rate)
-        self.normalise_weights()
+            # update weights
+            self.disc_update_weights_soft(copy_spn, learning_rate, N=len(data))
+            self.normalise_weights()
+
+
+    def disc_update_weights_soft(self, best_guess, learning_rate, N=1):
+        for node, guess in zip(self.get_sum_nodes(), best_guess.get_sum_nodes()):
+            # get means
+            mean = 0 
+            for child_id, guess_child_id in zip(node.children.keys(), guess.children.keys()):
+                # mean of differences
+                tmp = node.children[child_id][1] - guess.children[guess_child_id][1]
+                mean += tmp
+            mean = mean / N
+
+            # update weights
+            for child_id, guess_child_id in zip(node.children.keys(), guess.children.keys()):
+                # difference
+                tmp = node.children[child_id][1] - guess.children[guess_child_id][1]
+                print("id", child_id, "difference", tmp/N)
+                
+                # take mean out
+                tmp = tmp - mean
+                print("id", child_id, "without mean", tmp/N)
+                node.children[child_id][0] += tmp*learning_rate/N
+
+            # clear counts
+            for child_id in node.children.keys():
+                node.children[child_id][1] = 0
+
+
+    def best_guess(self, evidence):
+        for leaf in self.get_leaves():
+            var_value = 0
+
+            # evidence fill leaves normally
+            if leaf.order < len(evidence):
+                var_value = evidence[leaf.order]            
+                if leaf.inverse:
+                    var_value = 1 - var_value
+            # marginalise label
+            else:
+                var_value = 1
+            leaf.setValue(var_value)
+
+        root = self.get_root()
+        value = root.evaluate(self)
+
+        return value
 
 
     ###############################################################
     #          Discriminitive hard gradient descent               #
     ###############################################################    
 
-    def query(self, evidence):
-        x = []
-        value = self.best_guess(evidence)
-        x.append(value)
-
-
-        # numerators
-        x1 = self.evaluate(np.append(evidence, 1))
-        x2 = self.evaluate(np.append(evidence, 0))
-
-        x.append(x1-x[0])
-        x.append(x2-x[0])
-        return np.exp(x)
-
-
-    def best_guess(self, evidence):
+    def best_guess_hard(self, evidence):
         for leaf in self.get_leaves():
             var_value = 0
 
@@ -219,24 +242,24 @@ class SPN():
 
             # correct label
             inst = np.append(instance,y)
-            self.evaluate_mpn(inst)
+            output = self.evaluate_mpn(inst)
             root = self.get_root()
+            root.logDerivative = -output 
             root.hard_backprop(self)
 
-
             # best guess
-            copy_spn.best_guess(instance) # not gonna work
+            copy_spn.best_guess_hard(instance) 
             root = copy_spn.get_root()
             root.hard_backprop(self)
 
 
         if batch == True:
             # update weights
-            self.update_weights_hard(copy_spn, learning_rate)
+            self.disc_update_weights_hard(copy_spn, learning_rate)
             self.normalise_weights()
 
 
-    def update_weights_hard(self, best_guess, learning_rate):
+    def disc_update_weights_hard(self, best_guess, learning_rate):
         for node, guess in zip(self.get_sum_nodes(), best_guess.get_sum_nodes()):
 
             for child_id, guess_child_id in zip(node.children.keys(), guess.children.keys()):
@@ -355,6 +378,21 @@ class SPN():
             return SPN.LOG_ZERO
         conditional = num_value - denom_value
         return conditional
+
+
+    def query(self, evidence):
+        x = []
+        value = self.best_guess(evidence)
+        x.append(value)
+
+
+        # numerators
+        x1 = self.evaluate(np.append(evidence, 1))
+        x2 = self.evaluate(np.append(evidence, 0))
+
+        x.append(x1-x[0])
+        x.append(x2-x[0])
+        return np.exp(x)
 
 
     def print_weights(self):
