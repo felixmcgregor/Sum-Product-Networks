@@ -35,26 +35,26 @@ class SPN():
             if len(node.children) > 0:
                 for child_id in node.children.keys():
                     mean += node.children[child_id][1]/N
-                    #print("part", node.children[child_id][1]/N)
                 mean = mean / (len(node.children))
 
             for child_id in node.children.keys():
                 
-                #print("weight before", node.children[child_id][0])
-                gradient =  node.children[child_id][1] / N
-                update_value = gradient - mean
+                avg_gradient =  node.children[child_id][1] / N
+                print("update for", node.id, "to", child_id, "is", avg_gradient)
+                update_value = avg_gradient - mean
 
-                print("id", child_id, "update",update_value)
-                # update weights
-                node.children[child_id][0] += learning_rate * update_value
-
+                # Projected gradient update
+                #node.children[child_id][0] += learning_rate * update_value
+                # Exponential gradient update
+                node.children[child_id][0] *= np.exp(learning_rate * update_value)
                 # reset accumulationg derivatives
                 node.children[child_id][1] = 0
-                #print("weight after", node.children[child_id][0])
 
                 # dont let weights go negative
                 if node.children[child_id][0] < 0:
                     node.children[child_id][0] = 0
+
+        self.normalise_weights()
 
     def generative_soft_gd(self, data, batch=True, learning_rate=0.1):
         
@@ -73,12 +73,9 @@ class SPN():
             
             if batch == False:
                 self.update_weights(1, learning_rate)
-                self.normalise_weights()
-            #print()
 
         if batch == True:
             self.update_weights(len(data), learning_rate)
-        self.normalise_weights()
 
     ###############################################################
     #             Generative hard gradient descent                #
@@ -100,6 +97,7 @@ class SPN():
             output = self.evaluate_mpn(instance)
             root = self.get_root()
             if output == SPN.LOG_ZERO:
+                # this only causes problems with XOR example
                 continue
             else:
                 root.logDerivative = -output
@@ -151,10 +149,13 @@ class SPN():
 
 
             # best guess
-            copy_spn.best_guess(instance) 
-            root = copy_spn.get_root()
-            root.backprop(self)
-
+            output = copy_spn.best_guess(instance) 
+            root2 = copy_spn.get_root()
+            if output == SPN.LOG_ZERO:
+                continue
+            else:
+                root2.logDerivative = -output
+            root2.backprop(self)
 
         if batch == True:
             # update weights
@@ -177,11 +178,14 @@ class SPN():
                 # difference
                 tmp = node.children[child_id][1] - guess.children[guess_child_id][1]
                 print("id", child_id, "difference", tmp/N)
+                print("part", node.children[child_id][1]/N)
                 
                 # take mean out
-                tmp = tmp - mean
-                print("id", child_id, "without mean", tmp/N)
-                node.children[child_id][0] += tmp*learning_rate/N
+                update_value = tmp/N - mean
+                print("update from",node.id,"to", child_id, "without mean", tmp/N)
+                #node.children[child_id][0] += tmp*learning_rate/N
+                # Exponential gradient update
+                node.children[child_id][0] *= np.exp(learning_rate * update_value)
 
             # clear counts
             for child_id in node.children.keys():
@@ -381,6 +385,7 @@ class SPN():
 
 
     def query(self, evidence):
+        # compute marginals
         x = []
         value = self.best_guess(evidence)
         x.append(value)

@@ -38,7 +38,10 @@ class SumNode(Node):
     def backprop(self, spn):
         # unused parent, dont bother passing derivative
         if self.logDerivative == Node.LOG_ZERO:
-            print("unused parent sum", self.id)
+            #print("unused parent derivative sum", self.id)
+            return
+        if self.logValue == Node.LOG_ZERO:
+            #print("unused parent value sum", self.id)
             return
  
         for child_id in self.children.keys():
@@ -71,8 +74,6 @@ class SumNode(Node):
             self.children[child_id][1] += np.exp(update)
 
             #print("passing derivative", np.exp(child.logDerivative), "from", self.id, "to", child.id)
-
-
             child.backprop(spn)
 
 

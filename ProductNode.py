@@ -21,7 +21,10 @@ class ProductNode(Node):
     def backprop(self, spn):
         # unused parent, goes here when upward pass did not pass through here
         if self.logDerivative == Node.LOG_ZERO:
-            print("unused parent product", self.id)
+            #print("unused parent derivative product", self.id)
+            return
+        if self.logValue == Node.LOG_ZERO:
+            #print("unused parent value product", self.id)
             return
 
         for child_id in self.children:
