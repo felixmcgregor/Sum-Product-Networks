@@ -11,7 +11,7 @@ class Node():
         self.logValue = Node.LOG_ZERO
         self.logDerivative = Node.LOG_ZERO
 
-    def setLogValue(logValue):
+    def setLogValue(self, logValue):
         self.value = value
 
 
