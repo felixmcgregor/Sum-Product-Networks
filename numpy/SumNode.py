@@ -1,12 +1,13 @@
-import numpy as np 
+import numpy as np
 from Node import Node
-from Node import LeafNode
+
 
 class SumNode(Node):
     """
         Sum node of SPN
     """
-    def __init__(self,id, parent_id):
+
+    def __init__(self, id, parent_id):
         super().__init__(id, parent_id)
         self.children = dict()
 
@@ -15,13 +16,13 @@ class SumNode(Node):
 
     ###############################################################
     #                     gradient descent                        #
-    ###############################################################  
+    ###############################################################
 
     def evaluate(self, spn):
 
         weighted_children = Node.LOG_ZERO
         for child_id in self.children.keys():
-            
+
             if self.children[child_id][0] == 0:
                 continue
 
@@ -34,7 +35,6 @@ class SumNode(Node):
         self.logValue = weighted_children
         return weighted_children
 
-
     def backprop(self, spn):
         # unused parent, dont bother passing derivative
         if self.logDerivative == Node.LOG_ZERO:
@@ -43,7 +43,7 @@ class SumNode(Node):
         if self.logValue == Node.LOG_ZERO:
             #print("unused parent value sum", self.id)
             return
- 
+
         for child_id in self.children.keys():
 
             child = spn.get_node_by_id(child_id)
@@ -53,7 +53,7 @@ class SumNode(Node):
                 temp = Node.LOG_ZERO
             else:
                 # parent derivative times weight
-                temp = self.logDerivative + np.log(self.children[child_id][0]) 
+                temp = self.logDerivative + np.log(self.children[child_id][0])
 
             # pass derivative
             if child.logDerivative == Node.LOG_ZERO:
@@ -76,16 +76,15 @@ class SumNode(Node):
             #print("passing derivative", np.exp(child.logDerivative), "from", self.id, "to", child.id)
             child.backprop(spn)
 
-
     ###############################################################
     #                    hard gradient descent                    #
-    ###############################################################  
+    ###############################################################
 
     def hard_backprop(self, spn):
         # unused parent, goes here when upward pass did not pass through here
         if self.logValue == Node.LOG_ZERO:
             return
- 
+
         for child_id in self.children.keys():
             child = spn.get_node_by_id(child_id)
 
@@ -96,7 +95,6 @@ class SumNode(Node):
                 # increment counts
                 self.children[child_id][1] += 1
             child.hard_backprop(spn)
-
 
     def evaluate_mpn(self, spn):
 
@@ -110,4 +108,3 @@ class SumNode(Node):
                 max_child = child
         self.logValue = max_child
         return max_child
-

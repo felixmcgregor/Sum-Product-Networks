@@ -1,10 +1,11 @@
-import numpy as np 
+import numpy as np
+
 
 class Node():
 
     LOG_ZERO = float('-inf')
 
-    def __init__(self,id,parent_id,children=[]):
+    def __init__(self, id, parent_id, children=[]):
         self.id = id
         self.children = children
         self.parent_id = parent_id
@@ -12,18 +13,18 @@ class Node():
         self.logDerivative = Node.LOG_ZERO
 
     def setLogValue(self, logValue):
-        self.value = value
+        self.logValue = logValue
 
 
 class LeafNode(Node):
 
-    def __init__(self,id,parent_id,order,inverse,value=1):
+    def __init__(self, id, parent_id, order, inverse, value=1):
         self.id = id
         self.parent_id = parent_id
         self.value = 1
         self.logValue = 0
         self.logDerivative = Node.LOG_ZERO
-        self.order = order # for feeding in evidence
+        self.order = order  # for feeding in evidence
         self.inverse = inverse
 
     def setValue(self, value):
